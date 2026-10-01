@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Channel Title Search - FULL SCANNER
 // @namespace    youtube-channel-search
-// @version      10.8
+// @version      11.0
 // @description  Search all loaded channel videos and display matching titles
 // @match        https://www.youtube.com/*
 // @run-at       document-idle
@@ -14,14 +14,14 @@
     console.log('YouTube Channel Search v10 started');
 
     // =========================================================
-    // SETTINGS violantmonkey
+    // SETTINGS
     // =========================================================
 
     const TOOL_ID = 'YT_CHANNEL_SEARCH_TOOL_V10';
     const RESULTS_ID = 'YT_SEARCH_RESULTS_PANEL_V10';
 
-    let currentChannel = '';
-    let currentKeyword = '';
+    let currentChannel = 'prof_dekiche_alimath';
+    let currentKeyword = 'الجذور';
 
     let allVideos = [];
     let collectedVideoURLs = new Set();
@@ -44,6 +44,131 @@
             .replace(/\s+/g, ' ')
             .toLowerCase()
             .trim();
+    }
+
+    function makeDraggable(element, handle, storageKey) {
+        handle.style.cursor = 'move';
+        handle.style.touchAction = 'none';
+        handle.title = (handle.title ? handle.title + ' · ' : '') + 'Drag to move';
+
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+                element.style.left = Math.max(0, Math.min(saved.left, window.innerWidth - 60)) + 'px';
+                element.style.top = Math.max(0, Math.min(saved.top, window.innerHeight - 50)) + 'px';
+                element.style.right = 'auto';
+            }
+        } catch (e) {}
+
+        let drag = null;
+        handle.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0 || event.target.closest('button, input, textarea, select, a')) return;
+            const rect = element.getBoundingClientRect();
+            drag = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                y: event.clientY,
+                left: rect.left,
+                top: rect.top
+            };
+            element.style.left = rect.left + 'px';
+            element.style.top = rect.top + 'px';
+            element.style.right = 'auto';
+            handle.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        });
+
+        handle.addEventListener('pointermove', function (event) {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            const rect = element.getBoundingClientRect();
+            const left = Math.max(0, Math.min(
+                window.innerWidth - rect.width,
+                drag.left + event.clientX - drag.x
+            ));
+            const top = Math.max(0, Math.min(
+                window.innerHeight - Math.min(rect.height, window.innerHeight),
+                drag.top + event.clientY - drag.y
+            ));
+            element.style.left = left + 'px';
+            element.style.top = top + 'px';
+        });
+
+        function finishDrag(event) {
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            drag = null;
+            try {
+                const rect = element.getBoundingClientRect();
+                localStorage.setItem(storageKey, JSON.stringify({
+                    left: rect.left,
+                    top: rect.top
+                }));
+            } catch (e) {}
+        }
+        handle.addEventListener('pointerup', finishDrag);
+        handle.addEventListener('pointercancel', finishDrag);
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (character) {
+            return {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[character];
+        });
+    }
+
+    function titleHtmlWithHighlight(title, keyword) {
+        const source = String(title || '');
+        const index = source.toLocaleLowerCase().indexOf(String(keyword || '').toLocaleLowerCase());
+        if (!keyword || index < 0) return escapeHtml(source);
+        return escapeHtml(source.slice(0, index)) +
+            '<mark>' + escapeHtml(source.slice(index, index + keyword.length)) + '</mark>' +
+            escapeHtml(source.slice(index + keyword.length));
+    }
+
+    function exportSearchResults() {
+        const videos = allVideos.filter(video => displayedResultURLs.has(video.url));
+        if (!videos.length) return;
+
+        const items = videos.map(function (video) {
+            return '<li><a href="' + escapeHtml(video.url) + '">' +
+                titleHtmlWithHighlight(video.title, currentKeyword) + '</a><div class="meta">' +
+                'Durée : ' + escapeHtml(video.duration || 'indisponible') +
+                ' · Date de création : ' +
+                escapeHtml(video.uploadDate || (video.dateLookupDone ? 'indisponible' : 'chargement…')) +
+                '</div></li>';
+        }).join('');
+        const html = [
+            '<!doctype html>',
+            '<html lang="fr"><head><meta charset="utf-8">',
+            '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            '<title>Résultats YouTube — ' + escapeHtml(currentKeyword) + '</title>',
+            '<style>',
+            'body{font:16px Arial,sans-serif;max-width:900px;margin:32px auto;padding:0 18px;color:#171717}',
+            'h1{font-size:24px}.summary{color:#555;margin-bottom:22px}',
+            'li{padding:14px;margin:10px 0;background:#f6f6f6;border:1px solid #ddd;border-radius:8px}',
+            'a{color:#1558b0;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}',
+            'mark{background:#fff176;padding:1px 3px;border-radius:3px}.meta{margin-top:6px;color:#666;font-size:14px}',
+            '</style></head><body>',
+            '<h1>📋 SEARCH RESULTS</h1>',
+            '<div class="summary">' + escapeHtml(currentKeyword) + ' — ' + videos.length +
+                ' résultat(s) · ' + allVideos.length + ' vidéo(s) vérifiée(s)</div>',
+            '<ol>' + items + '</ol></body></html>'
+        ].join('\n');
+
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const objectUrl = URL.createObjectURL(blob);
+        const download = document.createElement('a');
+        const safeKeyword = currentKeyword.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').trim().slice(0, 60) || 'search';
+        download.href = objectUrl;
+        download.download = 'youtube_search_' + safeKeyword + '_' + new Date().toISOString().slice(0, 10) + '.html';
+        document.body.appendChild(download);
+        download.click();
+        download.remove();
+        setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 30000);
     }
 
     // =========================================================
@@ -107,6 +232,7 @@
         `;
 
         box.appendChild(title);
+        makeDraggable(box, title, 'YT_CHANNEL_SEARCH_TOOL_POSITION_V1');
 
         // =====================================================
         // CHANNEL
@@ -1279,13 +1405,31 @@
             const heading = document.createElement('div');
             heading.textContent = '📋 SEARCH RESULTS';
             heading.style.cssText = 'font-size:21px;font-weight:900;';
-            header.appendChild(heading);
+
+            const titleRow = document.createElement('div');
+            titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;';
+            titleRow.appendChild(heading);
+
+            const exportButton = document.createElement('button');
+            exportButton.id = 'YT_SEARCH_EXPORT_HTML_V11';
+            exportButton.type = 'button';
+            exportButton.textContent = '⬇ Export HTML';
+            exportButton.style.cssText = 'padding:7px 10px;background:#176b35;color:#fff;border:1px solid #124d28;border-radius:6px;font-weight:bold;cursor:pointer;white-space:nowrap;';
+            exportButton.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+            exportButton.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                exportSearchResults();
+            });
+            titleRow.appendChild(exportButton);
+            header.appendChild(titleRow);
 
             const info = document.createElement('div');
             info.id = 'YT_SEARCH_RESULTS_INFO_V10';
             info.style.cssText = 'margin-top:5px;font-size:15px;font-weight:bold;';
             header.appendChild(info);
             panel.appendChild(header);
+            makeDraggable(panel, header, 'YT_SEARCH_RESULTS_POSITION_V1');
 
             const empty = document.createElement('div');
             empty.id = 'YT_SEARCH_RESULTS_EMPTY_V10';
@@ -1343,6 +1487,12 @@
         }
 
         const count = displayedResultURLs.size;
+        const exportButton = document.getElementById('YT_SEARCH_EXPORT_HTML_V11');
+        if (exportButton) {
+            exportButton.textContent = '⬇ Export HTML (' + count + ')';
+            exportButton.disabled = count === 0;
+            exportButton.style.opacity = count === 0 ? '0.55' : '1';
+        }
         info.textContent = '"' + currentKeyword + '" — ' + count +
             ' result(s) from ' + scannedCount + ' video(s) checked' +
             (scanFinished ? ' — scan complete' : ' — scanning; results appear as found');
