@@ -14,7 +14,7 @@
     console.log('YouTube Channel Search v10 started');
 
     // =========================================================
-    // SETTINGS
+    // SETTINGS violantmonkey
     // =========================================================
 
     const TOOL_ID = 'YT_CHANNEL_SEARCH_TOOL_V10';
