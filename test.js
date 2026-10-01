@@ -20,8 +20,8 @@
     const TOOL_ID = 'YT_CHANNEL_SEARCH_TOOL_V10';
     const RESULTS_ID = 'YT_SEARCH_RESULTS_PANEL_V10';
 
-    let currentChannel = 'prof_dekiche_alimath';
-    let currentKeyword = 'الجذور';
+    let currentChannel = '';
+    let currentKeyword = '';
 
     let allVideos = [];
     let collectedVideoURLs = new Set();
